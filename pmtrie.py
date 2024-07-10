@@ -6,6 +6,7 @@
 
 # WARNING: untested and incomplete implementation
 
+import json
 from helpers import *
 
 class PMtrie:
@@ -148,6 +149,31 @@ class PMtrie:
                     p.hash = PMtrie.ComputeHash(p.prefix, root=merkle_root(p.children))
             return self
 
+    def prove(self, key):
+        return self.walk(to_path(key))
+
+    def walk(self, path):
+        if self.get_type() == PMtrie.TYPE_ROOT:
+            raise Exception("can't do this")
+        elif self.get_type() == PMtrie.TYPE_LEAF:
+            assert path.startswith(self.prefix)
+            return PMproof(to_path(self.key), self.value if path == self.prefix else None)
+        else:
+            assert path.startswith(self.prefix)
+            skip = len(self.prefix)
+
+            path = path[skip:]
+            branch = nibble(path[0])
+
+            child = self.children[branch]
+
+            assert child is not None
+            proof = child.walk(path[1:])
+
+            return proof.rewind(child, skip, self.children)
+
+
+
     def inspect(self, level=0):
         type_symbol = {PMtrie.TYPE_ROOT: 'R', PMtrie.TYPE_BRANCH: '+', PMtrie.TYPE_LEAF: '>'}
         print(f"{' '*level}[{type_symbol[self.get_type()]}] size={self.size} {self.prefix} {decode_string(self.key)}-->{decode_string(self.value)} {'#'+self.hash.hex() if self.hash is not None else ''}")
@@ -156,6 +182,186 @@ class PMtrie:
             for child in self.children:
                 if child is not None:
                     child.inspect(level=level+d_level)
+
+class PMproof:
+    TYPE_LEAF = 'leaf'
+    TYPE_FORK = 'fork'
+    TYPE_BRANCH = 'branch'
+
+    def __init__(self, path, value):
+        self.path  = path
+        self.value = value
+        self.steps = []
+
+    def rewind(self, target, skip, children):
+
+        me = None
+        nodes = []
+        for i,child in enumerate(children):
+            if child is not None:
+                if child.hash == target.hash:
+                    me = i
+                else:
+                    nodes.append(child)
+
+        if me is None:
+            raise Exception("target not in children")
+
+        if (len(nodes) == 1):
+            neighbor = nodes[0]
+            if neighbor.get_type() == PMtrie.TYPE_LEAF:
+                self.steps.insert(0, {
+                    'type': PMproof.TYPE_LEAF,
+                    'skip': skip,
+                    'neighbor': {
+                        'key': to_path(neighbor.key),
+                        'value': digest(neighbor.value),
+                        }
+                    })
+            else:
+                self.steps.insert(0, {
+                    'type': PMproof.TYPE_FORK,
+                    'skip': skip,
+                    'neighbor': {
+                        'prefix': nibbles(neighbor.prefix),
+                        'nibble': children.index(neighbor),
+                        'root': merkle_root(neighbor.children),
+                        }
+                    })
+        else:
+            self.steps.insert(0, {
+                'type': PMproof.TYPE_BRANCH,
+                'skip': skip,
+                'neighbors': merkle_proof(children, me),
+                })
+
+        return self
+
+    def verify(self, including_item=True):
+        if not including_item and len(self.steps) == 0:
+            return NULL_HASH
+        
+        def loop(cursor, ix):
+            step = self.steps[ix] if ix < len(self.steps) else None
+            if step is None:
+                if not including_item:
+                    return None
+                suffix = self.path[cursor:]
+                assert self.value is not None
+                return PMtrie.ComputeHash(suffix, value=digest(self.value))
+            is_last_step = (ix + 1) >= len(self.steps) or self.steps[ix+1] is None
+            next_cursor = cursor + 1 + step['skip']
+
+            me = loop(next_cursor, ix+1)
+
+            this_nibble = nibble(self.path[next_cursor -1 ])
+            
+            def root(nodes):
+                prefix = self.path[cursor:next_cursor-1]
+                merkle = merkle_root(sparse_vector(nodes))
+                return PMtrie.ComputeHash(prefix, root=merkle)
+
+            if step['type'] == PMproof.TYPE_BRANCH:
+                def h(left, right):
+                    return digest((left if left is not None else NULL_HASH) + (right if right is not None else NULL_HASH))
+
+                lvl1, lvl2, lvl3, lvl4 = step['neighbors']
+                merkle = {
+                    0: h(h(h(h(me, lvl4), lvl3), lvl2), lvl1),
+                    1: h(h(h(h(lvl4, me), lvl3), lvl2), lvl1),
+                    2: h(h(h(lvl3, h(me, lvl4)), lvl2), lvl1),
+                    3: h(h(h(lvl3, h(lvl4, me)), lvl2), lvl1),
+                    4: h(h(lvl2, h(h(me, lvl4), lvl3)), lvl1),
+                    5: h(h(lvl2, h(h(lvl4, me), lvl3)), lvl1),
+                    6: h(h(lvl2, h(lvl3, h(me, lvl4))), lvl1),
+                    7: h(h(lvl2, h(lvl3, h(lvl4, me))), lvl1),
+                    8: h(lvl1, h(h(h(me, lvl4), lvl3), lvl2)),
+                    9: h(lvl1, h(h(h(lvl4, me), lvl3), lvl2)),
+                    10: h(lvl1, h(h(lvl3, h(me, lvl4)), lvl2)),
+                    11: h(lvl1, h(h(lvl3, h(lvl4, me)), lvl2)),
+                    12: h(lvl1, h(lvl2, h(h(me, lvl4), lvl3))),
+                    13: h(lvl1, h(lvl2, h(h(lvl4, me), lvl3))),
+                    14: h(lvl1, h(lvl2, h(lvl3, h(me, lvl4)))),
+                    15: h(lvl1, h(lvl2, h(lvl3, h(lvl4, me)))),
+                }[this_nibble]
+
+                prefix = self.path[cursor:next_cursor-1]
+
+                return PMtrie.ComputeHash(prefix, root=merkle)
+
+            elif step['type'] == PMproof.TYPE_FORK:
+                if not including_item and is_last_step:
+                    return digest( bytes([step['neighbor']['nibble']]) + step['neighbor']['prefix'] + step['neighbor']['root'])
+
+                assert step['neighbor']['nibble'] != this_nibble
+
+                return root({this_nibble: me, step['neighbor']['nibble']: digest(step['neighbor']['prefix'] + step['neighbor']['root'])})
+
+            elif step['type'] == PMproof.TYPE_LEAF:
+                neighbor_path = step['neighbor']['key']
+                assert neighbor_path[:cursor] == self.path[:cursor]
+
+                neighbor_nibble = nibble(neighbor_path[next_cursor-1])
+                assert neighbor_nibble != this_nibble
+
+                if not including_item and is_last_step:
+                    suffix = neighbor_path[cursor:]
+                    return PMtrie.ComputeHash(suffix, value=step['neighbor']['value'])
+
+                suffix = neighbor_path[next_cursor:]
+                
+                return root({this_nibble: me, neighbor_nibble: PMtrie.ComputeHash(suffix, value=step['neighbor']['value'])})
+            else:
+                return Exception("unknown proof type")
+        
+        return loop(0,0)
+
+
+    def _serialize_step(self, step):
+        if step['type'] == PMproof.TYPE_BRANCH:
+            return dict(step, neighbors=''.join([x.hex() for x in step['neighbors'] if x is not None]))
+        elif step['type'] == PMproof.TYPE_FORK:
+            return dict(step, neighbor=dict(step['neighbor'], prefix=step['neighbor']['prefix'], root=step['neighbor']['root'].hex()))
+        elif step['type'] == PMproof.TYPE_LEAF:
+            return dict(step, neighbor={'key': step['neighbor']['key'], 'value': step['neighbor']['value'].hex()})
+
+    def toJSON(self, full=False):
+        if full:
+            return json.dumps({'path': self.path, 'value': encode_string(self.value).hex(), 'steps':[self._serialize_step(step) for step in self.steps]})
+        else:
+            return json.dumps([self._serialize_step(step) for step in self.steps])
+
+    @staticmethod
+    def deserialize_step(d):
+        if d['type'] == PMproof.TYPE_BRANCH:
+            s = d['neighbors']
+            neighbors = [bytes.fromhex(s[i:i+64]) for i in range(0, len(s), 64)]
+            return dict(d, neighbors=neighbors)
+        elif d['type'] == PMproof.TYPE_FORK:
+            neighbor=d['neighbor']
+            neighbor['root'] = bytes.fromhex(neighbor['root'])
+            return dict(d, neighbor=neighbor)
+        elif d['type'] == PMproof.TYPE_LEAF:
+            neighbor=d['neighbor']
+            neighbor['value'] = bytes.fromhex(neighbor['value'])
+            return dict(d, neighbor=neighbor)
+        return
+
+    @staticmethod
+    def fromJSON(l):
+        d = json.loads(l)
+        if type(d) is dict:
+            p = PMproof(d['path'], bytes.fromhex(d['value']))
+            p.steps = [PMproof.deserialize_step(x) for x in d['steps']]
+        else:
+            p = PMproof('', bytes([42]))
+            p.steps = [PMproof.deserialize_step(x) for x in d]
+        return p
+
+    def inspect(self):
+        print(f"<PROOF> {self.path} --> {self.value}")
+        for i,step in enumerate(self.steps):
+            print(f"-[{i}]: {step['type']} @{step['skip']}")
 
 
 if __name__ == '__main__':
@@ -175,3 +381,5 @@ if __name__ == '__main__':
     t2.insert('plum[uid: 15492]', '🤷')
     t2.inspect()
 
+    p = t.prove('te3')
+    print(p.toJSON())
