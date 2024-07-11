@@ -27,7 +27,10 @@ def encode_string(s):
 
 def decode_string(b):
     if type(b) is bytes:
-        return b.decode('utf-8')
+        try:
+            return b.decode('utf-8')
+        except:
+            return '0x' + b.hex()
     elif type(b) is str:
         return b
     elif type(b) is type(None):
