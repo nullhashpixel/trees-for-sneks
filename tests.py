@@ -120,6 +120,44 @@ class TestTrie(unittest.TestCase):
         serialized_steps = proof.toJSON()
         self.assertEqual(serialized_steps, '[{"type": "branch", "skip": 0, "neighbors": "c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb47238ba5d16031b6bace4aee22156f5028b0ca56dc24f7247d6435292e82c039c3490a825d2e8deddf8679ce2f95f7e3a59d9c3e1af4a49b410266d21c9344d6d79519b8cdfbd053e5a86cf28a781debae71638cd77f85aad4b88869373d9dcfd"}, {"type": "leaf", "skip": 0, "neighbor": {"key": "5cddcd30a0a388cf6feb3fd6e112c96e9daf23e3a9c8a334e7044650471aaa9e", "value": "f429821ddf89c9df3c7fbb5aa6fadb6c246d75ceede53173ce59d70dde375d14"}}, {"type": "leaf", "skip": 0, "neighbor": {"key": "5e7ccfedd44c90423b191ecca1eb21dfbac865d561bace8c0f3e94ae7edf4440", "value": "7c3715aba2db74d565a6ce6cc72f20d9cb4652ddb29efe6268be15b105e40911"}}]')
 
+    def test_blockchain(self):
+
+        genesis = {
+                '532945de0bc268a6b89d445c97f018d1dc5bf2ac4f80bad827dafdc05df71d62': '357dc4014a70c866c01c5c0966b6c0ecebf826c0475877a92491d708d8a2a683',
+                '0801de1c443d83b7436c96cc81f325583775f58bd38e43b15b93ab630c78d6b2': '0000077d6412d9d9006bd5abd01191087e7a0b41aa7e4f9b69924eda9b8d564a',
+                '506ea47b608de6b67c31d4169b8dda967b889ed218d95b0b419225904cd86db2': '00000fcdcb33f425a1fae31d92a847bdc60d75cf90a132608bf9074e9675d23e',
+                '5d383a0925612fb2adcca13c0b12f19b911c8f8fea6585cc81cbb3392374ea07': '000002057bf654592884cdd370317eeec835545c5b4909f15fae751b24b014db',
+                '053b168c1854e78f670879fdc0da9b533e1dabead4b370874519ccc8f65ace5a': '00000d1c0cc8af18e5e69d1f43196f528af8b2b08d52467376b657b7232172a3'
+                }
+
+        t = PMtrie()
+        for k,v in genesis.items():
+            t.insert(bytes.fromhex(k), bytes.fromhex(v))
+        self.assertEqual(t.hash.hex(), "e93fd5647f4c458e3a339c9700e1f86c66b55e133a768c32612c9f50ccdbf3f5")
+
+        new_blockhash = bytes.fromhex("00038818db9aad8d4d11fb31308c4e20cb3b01e2079697ac95287b8196d4008b")
+        t.insert(digest(new_blockhash), new_blockhash)
+        self.assertEqual(t.hash.hex(), "e80c5162f4eca0c90213d71b63ceb30eba1d3f08f71a22561588a8e9f0880d0e")
+
+        new_blockhash = bytes.fromhex("0000cd204248afa1b80e293d96f0e600b71b9273e80d7b88a3b8b818270611bc")
+        t.insert(digest(new_blockhash), new_blockhash)
+        self.assertEqual(t.hash.hex(), "85c7a115102a8cdb6afba047a4fefcf7b25bbed07aee92e6658d894c2b633edd")
+
+        new_blockhash = bytes.fromhex("000fc61c50169ffe40a5e86ca21c557849e999e093d3fd16e142dc62de58e69e")
+        t.insert(digest(new_blockhash), new_blockhash)
+        self.assertEqual(t.hash.hex(), "88cd10de259ad479964d00261123cd6634b6c16dabcdd9d7154e6e7f9b8388b8")
+
+        new_blockhash = bytes.fromhex("00037ac34b160b38ac5592addd8dd36b804259f26e754affe99ffa39aa2d6369")
+        t.insert(digest(new_blockhash), new_blockhash)
+        self.assertEqual(t.hash.hex(), "1319b3bab7470c068398af18c7e0da36d5446504d0a9359034f1a31d37dccb79")
+
+        new_blockhash = bytes.fromhex("000367d6b92990ca97ee5484d3dbe1a87e3ff731d0a3555c06d601b3b546a697")
+        t.insert(digest(new_blockhash), new_blockhash)
+        self.assertEqual(t.hash.hex(), "a9924dfb007673d02d8504229b50f99e49659d79dff36089bc528897c33f7c9f")
+
+        new_blockhash = bytes.fromhex("0003a9cbb12721260be94415443ec1b25f61f4b6c42a9c266da73f2a63279127")
+        t.insert(digest(new_blockhash), new_blockhash)
+        self.assertEqual(t.hash.hex(), "696d335e97d07e83156e4a59c14f557e45cec43293c36b1d8c8fc636093d65df")
 
 if __name__ == '__main__':
     unittest.main()

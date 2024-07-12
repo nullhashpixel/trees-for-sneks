@@ -87,13 +87,3 @@ def merkle_proof(nodes, me:int):
 def sparse_vector(d):
     return [d.get(x) for x in range(16)]
 
-
-
-
-
-
-
-
-
-
-
