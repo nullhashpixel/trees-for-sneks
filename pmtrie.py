@@ -86,6 +86,12 @@ class PMtrie:
     def replace_with(self, new):
         self.__dict__ = new.__dict__
 
+    def insert_digest(self, value):
+        if type(value) is str:
+            self.insert(digest(bytes.fromhex(value)), bytes.fromhex(value))
+        else:
+            self.insert(digest(value), value)
+
     def insert(self, key, value):
 
         if self.get_type() == PMtrie.TYPE_ROOT:
