@@ -159,5 +159,43 @@ class TestTrie(unittest.TestCase):
         t.insert(digest(new_blockhash), new_blockhash)
         self.assertEqual(t.hash.hex(), "696d335e97d07e83156e4a59c14f557e45cec43293c36b1d8c8fc636093d65df")
 
+
+        more_hashes = '''000d0041342a4bffbc7fc1f21a5f42ff554d1a1e663ec27455cddbbc9714aee9
+0004ee95d8d590758cacf2f4d1eb4d833fbb706b05ceb11919453fee9c69c178
+000112633b8efd53d07960f00812d68e1ecdbbe98c179f13c895fafbca09aefc
+00028f1d6cd6e27e78dc024580dc100f7ba2c3f15e34a287c80c2b167e454d86
+000c2aff038eb909c325a3b7791ec72b6772bf9effe3ea796f0665d09744eb54
+000506ce62c276af014225ab568ffb9dd144b19f6e5c844601640b06c37197e5
+000a2a9d2513df0ed6d2c9a795e29cc75f18762695c7aab53837cb727672df67
+000d4b5df51e8d06001f538872d601f1636f194d8e16f8f9a1722d1c2dd1f683'''
+        for h in more_hashes.split('\n'):
+            t.insert_digest(h)
+
+        hashes_and_proofs = [
+                ["000898e5a4feaed47d252cbb86c7b3ea45e99df71a202ece8abaa0f362b241b4", "9fd8799f005f584045f438aa6df69fa1c7de7f8ee37625fe47d7a9fbf2431cc2bbd2a4f890fe39cb6284bcd8a5a28014a7da9425264b4c8c600e75911304bc8fc492d91d5f3b51af584001bb4a4426235cbe17c4c1f7f15d7cd01f1983af2b4fb4f26021e39b04d2964c6932e374aead25ca40ff53f9767c650605d1416d0d38b7afb49b45ecd2647eb7ffffd87b9f005820db43c59fc44143d4a6d3f1f6337982e84b567deacf54f24d57343f8d38b4fb3058208f616fb8c63fee1a056b09850bdab87d9b3551bad61e65506218e799e77d7cacffff"],
+                ["000eb6f3ba03b7123c08ddc5b6da25df50b8b54526b7770f38c2fc683715435e", "9fd8799f005f5840ef218dde3a1fb872a11f38855212c03c19f0b294673a15e80c0575b2fdd62822ef93e32cdb5c999ecfb77422bd9cfd783380cb14b33145a01f13496f34c8e2b258407843fa1eed1db71ccd3931886edf59e6fd419f11b04317f258c61ba34f107f37a27889f2cf61d36dafb2ada45af6ddf2445df9350310955d67b88d1eec07c19cffffff"],
+                ["0007ea60b9b44dac70e378e7325d3522656f4502c1a22f833c141e2451b7e28d", "9fd8799f005f58405daba41ef822123952659f7d3df7bd0f565823fff448996eb92261b323eebbb26284bcd8a5a28014a7da9425264b4c8c600e75911304bc8fc492d91d5f3b51af5840663a8ac21d45237a7f38fd5716caa421e66ed37e13e6717338b48cf7732791ebc18dabde836c090fbb295a2c5eba663979c7262b2d0671638483804cd858ee80ffffd87b9f005820e368883881bf43912ec1de8a820066b265e37ec00ffbe440067b03a97a4be4d6582090d8a10d510e7666f80f5914eb53b9a2628a3017c5e59d2acbeaf68bb506dac9ffff"]
+                ]
+        
+        for h, expected_proof in hashes_and_proofs:
+            t.insert_digest(h)
+            proof = t.prove_digest(h).toCBOR()
+            self.assertEqual(proof, expected_proof) 
+
+    def test_more_proofs(self):
+        t = PMtrie()
+        with open("proofs.txt", "r") as f:
+            for i,line in enumerate(f):
+                p = line.strip().split(' ')
+                t.insert_digest(p[1])
+                proof = t.prove_digest(p[1]).toCBOR()
+                self.assertEqual(proof, p[2])
+
+                proof_as_list = t.prove_digest(p[1]).toCBORlist()
+                proof = '9f' + ''.join(proof_as_list) + 'ff'
+                self.assertEqual(proof, p[2])
+
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -155,6 +155,13 @@ class PMtrie:
                     p.hash = PMtrie.ComputeHash(p.prefix, root=merkle_root(p.children))
             return self
 
+    def prove_digest(self, value):
+        if type(value) is str:
+            key = digest(bytes.fromhex(value))
+        else:
+            key = digest(value)
+        return self.prove(key)
+
     def prove(self, key):
         return self.walk(to_path(key))
 
@@ -336,6 +343,50 @@ class PMproof:
             return json.dumps({'path': self.path, 'value': encode_string(self.value).hex(), 'steps':[self._serialize_step(step) for step in self.steps]})
         else:
             return json.dumps([self._serialize_step(step) for step in self.steps])
+
+    def toList(self):
+        result = []
+        for step in self.steps:
+            if step['type'] == PMproof.TYPE_BRANCH:
+                result.append([0, step['skip'], ''.join([x.hex() for x in step['neighbors'] if x is not None])])
+            elif step['type'] == PMproof.TYPE_FORK:
+                result.append([1, step['skip'], step['neighbor']['prefix'].hex(), step['neighbor']['root'].hex()])
+            elif step['type'] == PMproof.TYPE_LEAF:
+                result.append([2, step['skip'], step['neighbor']['key'], step['neighbor']['value'].hex()])
+        return result
+
+    def toCBOR(self):
+        cbor = '9f'
+        for step in self.steps:
+            if step['type'] == PMproof.TYPE_BRANCH:
+                neighbors = ''.join([x.hex() for x in step['neighbors'] if x is not None])
+                cbor += 'd8799f' + bytes([step['skip']]).hex() + '5f' + '5840' + neighbors[:128] + '5840' + neighbors[128:] + 'ffff' 
+            elif step['type'] == PMproof.TYPE_FORK:
+                if len(step['neighbor']['prefix']) < 16:
+                    _prefix = bytes([0x40 + len(step['neighbor']['prefix'])]).hex() + step['neighbor']['prefix'].hex()
+                else:
+                    _prefix = '58' + bytes([len(step['neighbor']['prefix'])]).hex() + step['neighbor']['prefix'].hex()
+                cbor += 'd87a9f' + bytes([step['skip']]).hex() + 'd8799f' + bytes([step['neighbor']['nibble']]).hex() + _prefix  + '5820' + step['neighbor']['root'].hex() + 'ffff'
+            elif step['type'] == PMproof.TYPE_LEAF:
+                cbor += 'd87b9f' + bytes([step['skip']]).hex() + '5820' + step['neighbor']['key'] + '5820' + step['neighbor']['value'].hex() + 'ff'
+        cbor += 'ff'
+        return cbor
+
+    def toCBORlist(self):
+        cbor = []
+        for step in self.steps:
+            if step['type'] == PMproof.TYPE_BRANCH:
+                neighbors = ''.join([x.hex() for x in step['neighbors'] if x is not None])
+                cbor.append('d8799f' + bytes([step['skip']]).hex() + '5f' + '5840' + neighbors[:128] + '5840' + neighbors[128:] + 'ffff')
+            elif step['type'] == PMproof.TYPE_FORK:
+                if len(step['neighbor']['prefix']) < 16:
+                    _prefix = bytes([0x40 + len(step['neighbor']['prefix'])]).hex() + step['neighbor']['prefix'].hex()
+                else:
+                    _prefix = '58' + bytes([len(step['neighbor']['prefix'])]).hex() + step['neighbor']['prefix'].hex()
+                cbor.append('d87a9f' + bytes([step['skip']]).hex() + 'd8799f' + bytes([step['neighbor']['nibble']]).hex() + _prefix  + '5820' + step['neighbor']['root'].hex() + 'ffff')
+            elif step['type'] == PMproof.TYPE_LEAF:
+                cbor.append('d87b9f' + bytes([step['skip']]).hex() + '5820' + step['neighbor']['key'] + '5820' + step['neighbor']['value'].hex() + 'ff')
+        return cbor
 
     @staticmethod
     def deserialize_step(d):
